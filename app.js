@@ -1,6 +1,6 @@
 'use strict';
 // Bé Vui Học – phần điều khiển: hồ sơ bé, nhiệm vụ mỗi ngày, các trò chơi, khu vườn, khu phụ huynh.
-const APP_VER = 2;
+const APP_VER = 3;
 const $ = id => document.getElementById(id);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
 const pad2 = n => String(n).padStart(2, '0');
@@ -300,11 +300,13 @@ function itemHtml(o) {
   if (o.startsWith('shape:')) return shapeSvg(o.slice(6));
   if (o.startsWith('color:')) return `<span class="blob" style="background:${o.slice(6)}"></span>`;
   if (o.startsWith('clock:')) { const [hh, mm] = o.slice(6).split(':'); return clockSvg(+hh, +mm); }
+  // "tf:scaleX(-1)|🦒" là hình bị lật/xoay
+  if (o.startsWith('tf:')) { const [t, e] = o.slice(3).split('|'); return `<span class="tfe" style="transform:${t}">${e}</span>`; }
   return esc(o);
 }
 function itemKind(o) {
   if (typeof o === 'object') return 'wide';
-  if (/^(shape|color|clock):/.test(o)) return '';
+  if (/^(shape|color|clock|tf):/.test(o)) return '';
   if (/^\d+$/.test(o)) return 'num';
   if (/^\p{L}{1,4}$/u.test(o.normalize('NFC'))) return 'letter';
   if (/[\p{L}\d]/u.test(o)) return 'text';
@@ -327,7 +329,7 @@ function renderQ(silent) {
   // Câu xếp chữ / điền chữ: chỉ hiện phần hướng dẫn, phần sau dấu ":" là đáp án nên chỉ đọc to
   st.appendChild(el('div', 'prompt', esc(q.cap || (q.t === 'order' ? textOf(q.say).split(':')[0] : textOf(q.say)))));
   if (q.show) st.appendChild(showEl(q.show, q));
-  ({ pick: renderPick, match: renderMatch, trace: renderTrace, order: renderOrder, memo: renderMemo, gone: renderGone })[q.t](st, q);
+  ({ pick: renderPick, match: renderMatch, trace: renderTrace, order: renderOrder, memo: renderMemo, gone: renderGone, simon: renderSimon, draw: renderDraw })[q.t](st, q);
   if (!silent) say(q.say);
 }
 function showEl(s, q) {
@@ -343,7 +345,89 @@ function showEl(s, q) {
   else if (s.clock) w.appendChild(el('div', 'card clockc', clockSvg(s.clock[0], s.clock[1])));
   else if (s.seq) w.appendChild(el('div', 'card seq', s.seq.map(x => x === '?' ? '<span class="qm">?</span>' : `<span>${x}</span>`).join('')));
   else if (s.sum) w.appendChild(el('div', 'card sum', `<span>${s.sum[0].repeat(s.sum[1])}</span><b>➕</b><span>${s.sum[0].repeat(s.sum[2])}</span>`));
+  else if (s.mix) w.appendChild(el('div', 'card sum', `<span class="blob" style="background:${s.mix[0]}"></span><b>➕</b><span class="blob" style="background:${s.mix[1]}"></span><b>=</b><span class="qm">?</span>`));
+  else if (s.shadow) w.appendChild(el('div', 'card pic', `<div class="e shadow">${s.shadow}</div>`));
+  else if (s.pos) {
+    // Lưới 3×3: vật mốc ở giữa, hình cần hỏi ở trên/dưới/trái/phải
+    const g = el('div', 'card posg');
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) g.appendChild(el('span', '', r === 1 && c === 1 ? s.pos[1] : r === s.pos[2][0] && c === s.pos[2][1] ? s.pos[0] : ''));
+    w.appendChild(g);
+  }
   return w;
+}
+
+// ───── Gõ nhạc theo bạn Cú: xem dãy nốt sáng lên rồi gõ lại đúng thứ tự ─────
+const PADS = [['#ff6b6b', 523], ['#4fb6ff', 659], ['#7ccf5a', 784], ['#ffc531', 1047]];
+function tone(f) {
+  try {
+    const c = NhacNen.getCtx(), t = c.currentTime, o = c.createOscillator(), g = c.createGain();
+    o.type = 'sine'; o.frequency.value = f; o.connect(g); g.connect(c.destination);
+    g.gain.setValueAtTime(.22, t); g.gain.exponentialRampToValueAtTime(.001, t + .45); o.start(t); o.stop(t + .5);
+  } catch (e) {}
+}
+function renderSimon(st, q) {
+  const box = el('div', 'simon'), me = P, still = () => P === me && P.q === q;
+  const pads = PADS.map(([c], i) => { const b = el('button', 'pad'); b.style.background = c; b.onclick = () => tap(i); box.appendChild(b); return b; });
+  st.appendChild(box);
+  let pos = 0, busy = true;
+  const flash = async i => { pads[i].classList.add('lit'); tone(PADS[i][1]); await sleep(450); pads[i].classList.remove('lit'); await sleep(200); };
+  async function demo(first) {
+    busy = true; pos = 0;
+    if (first) { await sleep(60); await sayP; } else await say(TTPH.simonAgain);
+    await sleep(300);
+    for (const i of q.seq) { if (!still()) return; await flash(i); }
+    if (!still()) return;
+    busy = false; say(TTPH.simonGo);
+  }
+  async function tap(i) {
+    if (busy || P.lock) return;
+    pads[i].classList.add('lit'); tone(PADS[i][1]); setTimeout(() => pads[i].classList.remove('lit'), 250);
+    if (i !== q.seq[pos]) {
+      busy = true; shake(box); P.mist++; P.qMist++; beep(false);
+      await sleep(700); if (still()) demo(false);
+      return;
+    }
+    if (++pos === q.seq.length) { busy = true; await sleep(300); right(); }
+  }
+  demo(true);
+}
+
+// ───── Vẽ tự do: bút màu + hình dán theo chủ đề, không có đúng sai ─────
+const DRAW_COLORS = ['#ef3b3b', '#ff8c1a', '#f5d21c', '#3fbf4a', '#3b7bef', '#9b4dde', '#8b5a2b', '#ffffff'];
+function renderDraw(st, q) {
+  const S = Math.max(240, Math.min(innerWidth - 40, innerHeight - 340, 560)), dpr = Math.min(devicePixelRatio || 1, 2), W = Math.round(S * dpr);
+  const box = el('div', 'card drawbox'), cv = document.createElement('canvas'), ix = cv.getContext('2d');
+  cv.width = cv.height = W; cv.style.cssText = `width:${S}px;height:${S}px;background:${q.bg}`;
+  const tools = el('div', 'dtools');
+  let tool = DRAW_COLORS[0], acts = 0, last = null;
+  const pick = b => tools.querySelectorAll('button').forEach(x => x.classList.toggle('sel', x === b));
+  DRAW_COLORS.forEach((c, i) => { const b = el('button', 'dcol' + (i ? '' : ' sel')); b.style.background = c; b.onclick = () => { tool = c; pick(b); }; tools.appendChild(b); });
+  q.stk.forEach(e => { const b = el('button', 'dstk', e); b.onclick = () => { tool = { e }; pick(b); }; tools.appendChild(b); });
+  const bar = el('div', 'bar'), clr = el('button', 'btn ghost small', '🧽 Xoá'), ok = el('button', 'btn green small', '✔ Xong');
+  ok.disabled = true; bar.append(clr, ok);
+  box.append(cv, tools, bar); st.appendChild(box);
+  const pos = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * W, (e.clientY - r.top) / r.height * W]; };
+  // Vẽ/dán đủ 3 lần thì mới bấm Xong được
+  const did = () => { if (++acts >= 3) ok.disabled = false; };
+  ix.lineCap = ix.lineJoin = 'round'; ix.lineWidth = W * .025;
+  cv.onpointerdown = e => {
+    const p = pos(e);
+    if (typeof tool === 'object') {
+      ix.font = Math.round(W * .12) + 'px sans-serif'; ix.textAlign = 'center'; ix.textBaseline = 'middle';
+      ix.fillText(tool.e, p[0], p[1]); tone(880); did(); return;
+    }
+    cv.setPointerCapture(e.pointerId); last = p;
+    ix.fillStyle = ix.strokeStyle = tool; ix.beginPath(); ix.arc(p[0], p[1], ix.lineWidth / 2, 0, 7); ix.fill();
+  };
+  cv.onpointermove = e => { if (!last) return; const p = pos(e); ix.beginPath(); ix.moveTo(last[0], last[1]); ix.lineTo(p[0], p[1]); ix.stroke(); last = p; };
+  cv.onpointerup = cv.onpointercancel = () => { if (last) { last = null; did(); } };
+  clr.onclick = () => ix.clearRect(0, 0, W, W);
+  ok.onclick = async () => {
+    if (P.lock) return;
+    P.lock = true; beep(true);
+    const me = P; await say(TTPH.drawDone); await sleep(250);
+    if (P === me) next();
+  };
 }
 
 // ───── Lật thẻ tìm cặp ─────

@@ -201,6 +201,25 @@ h2 { font-size: clamp(22px, 4.5vw, 30px); margin: 10px 0; }
 .mcard.up span { visibility: visible; }
 .mcard.up::after { content: none; }
 .mcard.ok { background: #effbef; outline: 5px solid var(--ok); }
+.sum .blob { border: 3px solid var(--line); }
+.sum .qm { width: 96px; height: 96px; display: inline-grid; place-items: center; border-radius: 50%; border: 4px dashed var(--sun); color: var(--sun); font-weight: 700; }
+.shadow { filter: brightness(0); opacity: .85; }
+.posg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 12px; font-size: clamp(44px, 10vw, 70px);
+  background-image: linear-gradient(var(--line) 2px, transparent 2px), linear-gradient(90deg, var(--line) 2px, transparent 2px); background-size: 33.4% 33.4%; background-position: 12px 12px; }
+.posg span { width: 1.4em; height: 1.4em; display: grid; place-items: center; }
+.tfe { display: inline-block; }
+.opt .tfe { font-size: 64px; line-height: 1.1; }
+.simon { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+.pad { width: min(38vw, 170px); aspect-ratio: 1; border-radius: 34px; opacity: .45; box-shadow: inset 0 -8px 0 rgba(0,0,0,.15); transition: opacity .1s, transform .1s; }
+.pad.lit { opacity: 1; transform: scale(1.07); box-shadow: 0 0 0 8px rgba(255,255,255,.8), 0 0 30px rgba(0,0,0,.2); }
+.drawbox { padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.drawbox canvas { display: block; touch-action: none; border-radius: 18px; border: 3px solid var(--line); }
+.dtools { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 560px; }
+.dcol { width: 44px; height: 44px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 2px var(--line); }
+.dstk { width: 48px; height: 48px; border-radius: 14px; background: #fffaf0; font-size: 30px; border: 3px solid transparent; }
+.dcol.sel, .dstk.sel { box-shadow: 0 0 0 4px var(--sun); transform: scale(1.1); }
+.drawbox .bar { display: flex; gap: 12px; }
+.btn:disabled { opacity: .4; }
 
 /* Hoàn thành */
 .finish { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 16px; }
