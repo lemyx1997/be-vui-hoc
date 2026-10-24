@@ -7,7 +7,7 @@ const voices = fs.readdirSync(path.join(root, 'giong')).filter(f => f.endsWith('
 const fonts = fs.readdirSync(path.join(root, 'font')).filter(f => f.endsWith('.woff2')).sort();
 const src = `// Giúp ứng dụng mở được khi không có mạng: lưu sẵn toàn bộ app, phông chữ và giọng đọc ngay lần đầu.
 const CORE = 'be-vui-hoc-v${ver}';
-const FILES = ['./', 'index.html', 'data.js', 'bai-lop1.js', 'bai-lop2.js', 'app.js', 'nhac.js', 'manifest.json', 'icon-192.png', 'icon-512.png',
+const FILES = ['./', 'index.html', 'data.js', 'bai-lop1.js', 'bai-lop2.js', 'tri-tue.js', 'app.js', 'nhac.js', 'manifest.json', 'icon-192.png', 'icon-512.png',
   ${fonts.map(f => `'font/${f}'`).join(', ')},
 ${voices.map(f => `  'giong/${f}'`).join(',\n')},
 ];

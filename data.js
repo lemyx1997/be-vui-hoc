@@ -279,6 +279,7 @@ function allVoiceTexts() {
   const out = new Set(), add = s => { if (Array.isArray(s)) s.forEach(add); else if (s) out.add(s); };
   Object.values(PH).forEach(add);
   SUBJECTS.forEach(s => add(s.say));
+  if (typeof TTPH !== 'undefined') { Object.values(TTPH).forEach(add); ZONES.forEach(z => add(z.say)); }
   for (const st in LESSONS) for (const sub in LESSONS[st]) for (const L of LESSONS[st][sub]) {
     add(L.say);
     for (const q of L.qs) { add(q.say); (q.p || []).forEach(p => { add(p[2]); add(p[3]); }); }

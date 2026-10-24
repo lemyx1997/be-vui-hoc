@@ -1,6 +1,6 @@
 'use strict';
 // Bé Vui Học – phần điều khiển: hồ sơ bé, nhiệm vụ mỗi ngày, các trò chơi, khu vườn, khu phụ huynh.
-const APP_VER = 1;
+const APP_VER = 2;
 const $ = id => document.getElementById(id);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
 const pad2 = n => String(n).padStart(2, '0');
@@ -29,7 +29,12 @@ for (const st in LESSONS) for (const sub in LESSONS[st]) for (const L of LESSONS
 const subjOf = id => SUBJECTS.find(s => s.id === id);
 const lessonsOf = (k, sub) => (LESSONS[k.stage] || LESSONS[1])[sub] || [];
 const unlocked = (k, L) => L.idx === 0 || !!k.done[lessonsOf(k, L.sub)[L.idx - 1].id];
-const totalStars = k => Object.values(k.done).reduce((a, b) => a + b, 0);
+const totalStars = k => Object.values(k.done).reduce((a, b) => a + b, 0) + Object.values(k.tt || {}).reduce((a, z) => a + z.s, 0);
+// Đảo Trí Tuệ: cấp độ (lv 1–3), số lượt đã chơi (n), số sao kiếm được (s) của từng khu
+const zoneOf = id => ZONES.find(Z => Z.id === id);
+const ttOf = (k, id) => (k.tt || (k.tt = {}))[id] || (k.tt[id] = { lv: 1, n: 0, s: 0 });
+const LV_ICON = ['🌱', '🌿', '🌳'];
+function zoneToday() { const oz = ZONES.filter(Z => Z.open); return oz[Math.floor(Date.now() / 864e5) % oz.length].id; }
 const secsToday = k => k.days[today()] || 0;
 function nextLesson(k, sub) {
   const ls = lessonsOf(k, sub);
@@ -43,12 +48,12 @@ function nextLesson(k, sub) {
 // Dùng MỘT máy phát cho cả app (điện thoại hay chặn máy phát mới tạo).
 // say() nhận một câu hoặc nhiều câu, trả về lời hứa: xong khi đọc hết hoặc bị câu khác chen ngang.
 const voice = new Audio(); voice.preload = 'auto';
-let vq = [], voiceDone = null, vtok = 0;
+let vq = [], voiceDone = null, vtok = 0, sayP = Promise.resolve();
 function say(s) {
   vq = (Array.isArray(s) ? s : [s]).filter(Boolean); voice.pause(); vtok++;
   if (voiceDone) { const d = voiceDone; voiceDone = null; d(); }
   const tok = vtok;
-  return new Promise(res => { voiceDone = res; playNext(tok); });
+  return sayP = new Promise(res => { voiceDone = res; playNext(tok); });
 }
 function hush() { vq = []; voice.pause(); vtok++; if (voiceDone) { const d = voiceDone; voiceDone = null; d(); } duck(false); }
 function playNext(tok) {
@@ -146,11 +151,17 @@ $('nkSave').onclick = () => {
 
 // ───── Trang chủ của bé + nhiệm vụ hôm nay ─────
 function ensureMission(k) {
-  if (k.mission && k.mission.date === today()) return;
+  const tton = !k.off.includes('tt');
+  if (k.mission && k.mission.date === today()) {
+    // Nhiệm vụ đã tạo hôm nay từ trước khi có Đảo Trí Tuệ: thêm một lượt chơi đảo
+    if (tton && !k.mission.items.some(it => it.k === 't')) { k.mission.items.push({ k: 't', id: zoneToday() }); k.mission.done.push(false); touch(k); }
+    return;
+  }
   const subs = SUBJECTS.map(s => s.id).filter(s => !k.off.includes(s));
   const rot = Math.floor(Date.now() / 864e5) % Math.max(subs.length, 1);
-  const order = subs.slice(rot).concat(subs.slice(0, rot)).slice(0, 3);
+  const order = subs.slice(rot).concat(subs.slice(0, rot)).slice(0, tton ? 2 : 3);
   const items = order.map(s => ({ k: 'l', id: nextLesson(k, s).id }));
+  if (tton) items.push({ k: 't', id: zoneToday() });
   if (Object.keys(k.wrong).length >= 2) items.push({ k: 'r' });
   k.mission = { date: today(), items, done: items.map(() => false) };
   touch(k);
@@ -167,6 +178,7 @@ function goHome(greet) {
   k.mission.items.forEach((it, i) => {
     let html;
     if (it.k === 'r') html = '<span class="e">🔁</span><span class="t">Ôn tập<small>Câu bé chưa nhớ</small></span>';
+    else if (it.k === 't') { const Z = zoneOf(it.id); html = `<span class="e">${Z.icon}</span><span class="t">${Z.name}<small>🏝️ Đảo Trí Tuệ</small></span>`; }
     else { const L = LESSON[it.id], S = subjOf(L.sub); html = `<span class="e">${L.icon}</span><span class="t">${esc(L.title)}<small>${S.icon} ${S.name}</small></span>`; }
     const b = el('button', 'mi' + (k.mission.done[i] ? ' done' : ''), html);
     b.onclick = () => startItem(i);
@@ -184,6 +196,9 @@ function goHome(greet) {
     b.onclick = () => { if (off) return shake(b); say(S.say); goMap(S.id); };
     sb.appendChild(b);
   });
+  const ttoff = k.off.includes('tt');
+  const tb = el('button', 'card subj' + (ttoff ? ' off' : ''), '<div class="e">🏝️</div><div class="n">Đảo Trí Tuệ</div><div class="p">Rèn tư duy</div>');
+  tb.style.setProperty('--c', '#2ec4b6'); tb.onclick = () => (ttoff ? shake(tb) : goIsland()); sb.appendChild(tb);
   const g = el('button', 'card subj', `<div class="e">${petOf(totalStars(k)).e}</div><div class="n">Khu vườn</div><div class="p">Bạn nhỏ của bé</div>`);
   g.style.setProperty('--c', '#ffcf4a'); g.onclick = goGarden; sb.appendChild(g);
   show('home');
@@ -198,7 +213,7 @@ $('mGo').onclick = () => {
 };
 function startItem(i) {
   const it = kid().mission.items[i];
-  if (it.k === 'r') startReview(i); else startLesson(LESSON[it.id], i);
+  if (it.k === 'r') startReview(i); else if (it.k === 't') startZone(it.id, i); else startLesson(LESSON[it.id], i);
 }
 
 // Giới hạn thời gian mỗi ngày: hết giờ thì nhắc nhẹ, bố mẹ có thể cho chơi thêm
@@ -230,6 +245,26 @@ function goMap(sub) {
     box.appendChild(b);
   });
   show('map');
+}
+
+// ───── Đảo Trí Tuệ: 7 khu, mỗi khu là một vùng kỹ năng ─────
+function goIsland() {
+  const k = kid(), box = $('zones'); box.innerHTML = '';
+  ZONES.forEach(Z => {
+    const z = ttOf(k, Z.id);
+    const b = el('button', 'card subj zone' + (Z.open ? '' : ' lock'),
+      `<div class="e">${Z.icon}</div><div class="n">${Z.name}</div><div class="p">${Z.open ? LV_ICON[z.lv - 1] + ' Cấp ' + z.lv : '🔒 Sắp mở'}</div>`);
+    b.style.setProperty('--c', Z.color);
+    b.onclick = () => { if (!Z.open) { shake(b); say(TTPH.soon); return; } startZone(Z.id, -1); };
+    box.appendChild(b);
+  });
+  show('island'); say(TTPH.island);
+}
+function startZone(zid, mi) {
+  if (!timeOk(() => startZone(zid, mi))) return;
+  const Z = zoneOf(zid);
+  P = { zone: zid, qs: Z.make(ttOf(kid(), zid).lv), i: 0, mist: 0, mi, ok: [] };
+  show('play'); renderQ(true); say([Z.say].concat(P.q.say));
 }
 
 // ───── Màn chơi ─────
@@ -292,7 +327,7 @@ function renderQ(silent) {
   // Câu xếp chữ / điền chữ: chỉ hiện phần hướng dẫn, phần sau dấu ":" là đáp án nên chỉ đọc to
   st.appendChild(el('div', 'prompt', esc(q.cap || (q.t === 'order' ? textOf(q.say).split(':')[0] : textOf(q.say)))));
   if (q.show) st.appendChild(showEl(q.show, q));
-  ({ pick: renderPick, match: renderMatch, trace: renderTrace, order: renderOrder })[q.t](st, q);
+  ({ pick: renderPick, match: renderMatch, trace: renderTrace, order: renderOrder, memo: renderMemo, gone: renderGone })[q.t](st, q);
   if (!silent) say(q.say);
 }
 function showEl(s, q) {
@@ -306,7 +341,54 @@ function showEl(s, q) {
   else if (s.word) w.appendChild(el('div', 'card wordc', esc(s.word)));
   else if (s.read) w.appendChild(el('div', 'card readc', esc(s.read)));
   else if (s.clock) w.appendChild(el('div', 'card clockc', clockSvg(s.clock[0], s.clock[1])));
+  else if (s.seq) w.appendChild(el('div', 'card seq', s.seq.map(x => x === '?' ? '<span class="qm">?</span>' : `<span>${x}</span>`).join('')));
+  else if (s.sum) w.appendChild(el('div', 'card sum', `<span>${s.sum[0].repeat(s.sum[1])}</span><b>➕</b><span>${s.sum[0].repeat(s.sum[2])}</span>`));
   return w;
+}
+
+// ───── Lật thẻ tìm cặp ─────
+function renderMemo(st, q) {
+  const box = el('div', 'memo c' + (q.cards.length >= 8 ? 4 : 3)), seen = new Set();
+  let open = [], left = q.cards.length / 2;
+  q.cards.forEach((e, i) => {
+    const c = el('button', 'card mcard', `<span>${e}</span>`);
+    c.onclick = async () => {
+      if (P.lock || open.length === 2 || c.classList.contains('up')) return;
+      c.classList.add('up'); open.push({ c, e, i });
+      if (open.length < 2) return;
+      const [a, b] = open;
+      if (a.e === b.e) {
+        a.c.classList.add('ok'); b.c.classList.add('ok'); open = []; beep(true);
+        if (--left) return;
+        P.lock = true; const me = P;
+        await say(TTPH.memoDone); await sleep(250);
+        if (P === me) next();
+        return;
+      }
+      // Chỉ tính là nhầm khi bé đã từng thấy hình cặp của thẻ đầu mà vẫn lật sai
+      if (q.cards.some((x, j) => x === a.e && j !== a.i && seen.has(j))) { P.mist++; P.qMist++; }
+      seen.add(a.i); seen.add(b.i); beep(false);
+      setTimeout(() => { a.c.classList.remove('up'); b.c.classList.remove('up'); open = []; }, 900);
+    };
+    box.appendChild(c);
+  });
+  st.appendChild(box);
+}
+
+// ───── Nhớ hình: xem vài giây, các hình úp lại, một hình biến mất ─────
+async function renderGone(st, q) {
+  const row = el('div', 'card seq'), me = P;
+  q.items.forEach(e => row.appendChild(el('span', '', e)));
+  st.appendChild(row);
+  const still = () => P === me && P.q === q;
+  await sleep(60); await sayP; await sleep(q.ms);
+  if (!still()) return;
+  [...row.children].forEach(s => { s.textContent = ''; s.className = 'back'; });
+  await sleep(900);
+  if (!still()) return;
+  [...row.children].forEach((s, i) => { s.className = i === q.miss ? 'qm' : ''; s.textContent = i === q.miss ? '?' : q.items[i]; });
+  q.say = q.ask; st.querySelector('.prompt').textContent = q.ask;
+  renderPick(st, q); say(q.ask);
 }
 
 // ───── Xếp thẻ theo thứ tự: chạm thẻ để đưa lên hàng trên, chạm ô trên để trả lại ─────
@@ -367,8 +449,11 @@ function renderPick(st, q) {
 async function right() {
   P.lock = true; beep(true);
   const k = kid(), q = P.q;
-  if (P.qMist) k.wrong[q.id] = (k.wrong[q.id] || 0) + 1;
-  else if (k.wrong[q.id]) { if (--k.wrong[q.id] <= 0) delete k.wrong[q.id]; }
+  // Câu tạo ngẫu nhiên (Đảo Trí Tuệ) không có mã nên không đưa vào phần ôn tập
+  if (q.id) {
+    if (P.qMist) k.wrong[q.id] = (k.wrong[q.id] || 0) + 1;
+    else if (k.wrong[q.id]) { if (--k.wrong[q.id] <= 0) delete k.wrong[q.id]; }
+  }
   touch(k);
   const me = P;
   await say(rnd(PH.praise)); await sleep(250);
@@ -504,9 +589,16 @@ async function finish() {
   const before = totalStars(k);
   let stars = P.mist === 0 ? 3 : P.mist <= 2 ? 2 : 1;
   if (P.L) k.done[P.L.id] = Math.max(k.done[P.L.id] || 0, stars);
+  // Đảo Trí Tuệ: làm đúng hết thì lên cấp, sai nhiều thì xuống cấp cho vừa sức bé
+  const Z = P.zone && zoneOf(P.zone);
+  let lvUp = false;
+  if (Z) {
+    const z = ttOf(k, Z.id); z.n++; z.s += stars;
+    if (P.mist === 0 && z.lv < 3) { z.lv++; lvUp = true; } else if (P.mist >= 4 && z.lv > 1) z.lv--;
+  }
   // Đánh dấu nhiệm vụ đã xong
   if (k.mission && k.mission.date === today()) k.mission.items.forEach((it, i) => {
-    if (i === P.mi || (P.L && it.k === 'l' && it.id === P.L.id)) k.mission.done[i] = true;
+    if (i === P.mi || (P.L && it.k === 'l' && it.id === P.L.id) || (Z && it.k === 't' && it.id === Z.id)) k.mission.done[i] = true;
   });
   // Chuỗi ngày học liên tục + huy hiệu
   const t = today(), newBadges = [];
@@ -519,15 +611,18 @@ async function finish() {
   const nextI = k.mission.done.indexOf(false), allDone = nextI < 0, timeUp = secsToday(k) >= DB.set.limit * 60 && k.extra !== t;
   const fb = $('finBox');
   fb.innerHTML = `<div class="stars">${[1, 2, 3].map(i => `<span class="${i <= stars ? '' : 'no'}" style="animation-delay:${i * .25}s">⭐</span>`).join('')}</div>
-    <h1>${P.review ? 'Ôn tập xong!' : esc(P.L.title)}</h1>
+    <h1>${P.review ? 'Ôn tập xong!' : Z ? Z.icon + ' ' + Z.name : esc(P.L.title)}</h1>
+    ${lvUp ? `<p class="sub">${LV_ICON[ttOf(k, Z.id).lv - 1]} Bé lên Cấp ${ttOf(k, Z.id).lv}!</p>` : ''}
     ${grew ? `<div class="big-e">${petOf(totalStars(k)).e}</div><p class="sub">${PH.grow}</p>` : ''}
     ${newBadges.map(n => `<p class="sub">🏅 Huy hiệu ${n} ngày liền!</p>`).join('')}
     <div style="display:flex;flex-direction:column;gap:14px;align-items:center" id="finActs"></div>`;
   const acts = $('finActs');
   if (!allDone && !timeUp) { const b = el('button', 'btn green', '▶ Tiếp nhiệm vụ'); b.onclick = () => startItem(nextI); acts.appendChild(b); }
+  if (Z && !timeUp) { const b = el('button', 'btn', '🔁 Chơi lượt nữa'); b.onclick = () => startZone(Z.id, -1); acts.appendChild(b); }
   const hb = el('button', 'btn ghost', '🏠 Về nhà'); hb.onclick = () => { hush(); goHome(); }; acts.appendChild(hb);
   show('fin'); beep(true);
   const lines = [P.review ? PH.praise[2] : PH.stars[stars - 1]];
+  if (lvUp) lines.push(TTPH.lvUp);
   if (grew) lines.push(PH.grow);
   newBadges.forEach(n => lines.push(PH['badge' + n]));
   if (allDone) lines.push(PH.missionDone);
@@ -604,6 +699,15 @@ function renderParent() {
     s2.appendChild(el('div', '', `<h2 style="font-size:20px">💪 Bé đang giỏi</h2>${good.length ? good.map(t => `<span class="tag good">${esc(t)}</span>`).join('') : '<span class="sub">Chưa có bài 3 sao</span>'}
       <h2 style="font-size:20px">🎯 Cần luyện thêm</h2>${weak.length ? weak.map(t => `<span class="tag">${esc(t)}</span>`).join('') : '<span class="sub">Chưa có — bé làm tốt lắm!</span>'}`));
     box.appendChild(s2);
+    // Đảo Trí Tuệ: cấp độ từng vùng kỹ năng
+    const s5 = el('div', 'card psec', '<h2>🏝️ Đảo Trí Tuệ</h2><p class="sub" style="text-align:left">App tự tăng độ khó khi bé làm đúng hết một lượt, giảm khi bé sai nhiều.</p>');
+    ZONES.forEach(Z => {
+      const z = ttOf(k, Z.id);
+      s5.appendChild(el('div', 'row', `<span style="width:150px">${Z.icon} ${Z.name}</span>` + (Z.open
+        ? `<span class="prog"><i style="width:${z.lv / 3 * 100}%;background:${Z.color}"></i></span><span>Cấp ${z.lv}/3 · ${z.n} lượt</span>`
+        : '<span style="color:var(--soft)">Sắp mở</span>')));
+    });
+    box.appendChild(s5);
     // Cài đặt riêng của bé
     const s3 = el('div', 'card psec', `<h2>🧒 Cài đặt cho ${esc(k.name)}</h2><div class="row"><b>Chặng học</b></div>`);
     const chips = el('div', 'chips'); s3.appendChild(chips);
@@ -614,11 +718,14 @@ function renderParent() {
       const b = el('button', 'btn small ' + (k.off.includes(S.id) ? 'ghost' : 'green'), S.icon + ' ' + S.name);
       b.onclick = () => {
         if (k.off.includes(S.id)) k.off = k.off.filter(x => x !== S.id);
-        else if (k.off.length < SUBJECTS.length - 1) k.off.push(S.id);
+        else if (k.off.filter(x => x !== 'tt').length < SUBJECTS.length - 1) k.off.push(S.id);
         k.mission = null; touch(k); renderParent();
       };
       subRow.appendChild(b);
     });
+    const tb = el('button', 'btn small ' + (k.off.includes('tt') ? 'ghost' : 'green'), '🏝️ Đảo Trí Tuệ');
+    tb.onclick = () => { k.off = k.off.includes('tt') ? k.off.filter(x => x !== 'tt') : k.off.concat('tt'); k.mission = null; touch(k); renderParent(); };
+    subRow.appendChild(tb);
     s3.appendChild(subRow);
     const del = el('button', 'btn ghost small danger', '🗑️ Xoá hồ sơ này');
     del.onclick = () => overlay(`<div class="e">⚠️</div><p>Xoá hồ sơ của ${esc(k.name)}? Toàn bộ sao và tiến độ sẽ mất.</p>`, [
