@@ -280,6 +280,7 @@ function allVoiceTexts() {
   Object.values(PH).forEach(add);
   SUBJECTS.forEach(s => add(s.say));
   if (typeof ttVoices !== 'undefined') ttVoices().forEach(add);
+  if (typeof arVoices !== 'undefined') arVoices().forEach(add);
   for (const st in LESSONS) for (const sub in LESSONS[st]) for (const L of LESSONS[st][sub]) {
     add(L.say);
     for (const q of L.qs) { add(q.say); (q.p || []).forEach(p => { add(p[2]); add(p[3]); }); }

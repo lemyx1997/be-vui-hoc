@@ -6,6 +6,10 @@
 <title>Bé Vui Học</title>
 <meta name="description" content="Mỗi ngày 10–15 phút chơi mà học: Toán, Tiếng Việt, Tiếng Anh và kỹ năng đi học cho bé từ mẫu giáo lớn đến lớp 2">
 <meta name="theme-color" content="#ffb547">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Bé Vui Học">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -265,6 +269,26 @@ h2 { font-size: clamp(22px, 4.5vw, 30px); margin: 10px 0; }
 .kidtabs button.sel { border-color: var(--sun); background: #fff4dc; }
 .danger { color: #d33; }
 
+.hidden { display: none !important; }
+/* Góc thử thách */
+.artime { flex: 1; height: 18px; border-radius: 10px; background: #f0e2cc; overflow: hidden; }
+.artime i { display: block; height: 100%; background: linear-gradient(90deg, #7ccf5a, #ffc531); transition: width 1s linear; }
+.artime i.low { background: #ff6b6b; }
+.combo:empty { display: none; }
+.combo { background: #fff0e0; }
+.argoal { text-align: center; font-size: clamp(24px, 5vw, 34px); font-weight: 700; margin: 12px auto 0; padding: 8px 20px; background: #fff; border-radius: 999px; box-shadow: 0 4px 0 var(--line); }
+#arStage.sky { position: relative; overflow: hidden; justify-content: flex-end; background: linear-gradient(#dff3ff, #fff6e6); border-radius: 26px; margin-top: 12px; min-height: 60vh; }
+.balloon { position: absolute; bottom: -140px; width: 108px; height: 128px; border-radius: 50% 50% 48% 48%; color: #fff; font-size: 24px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; text-shadow: 0 2px 2px rgba(0,0,0,.25); box-shadow: inset -10px -12px 0 rgba(0,0,0,.12);
+  animation: rise linear forwards; touch-action: none; }
+.balloon::after { content: ''; position: absolute; bottom: -28px; left: 50%; width: 2px; height: 28px; background: #b9a58f; }
+.balloon span { padding: 0 4px; text-align: center; line-height: 1.1; white-space: nowrap; font-size: 22px; }
+.balloon.boom { transition: opacity .3s, scale .3s; opacity: 0; scale: 1.6; }
+@keyframes rise { from { transform: translateY(0); } to { transform: translateY(calc(-60vh - 300px)); } }
+.guide { text-align: left; font-size: 18px; line-height: 1.5; max-height: 55vh; overflow-y: auto; }
+.guide ol { padding-left: 22px; margin: 8px 0; }
+.guide h3 { font-size: 18px; margin: 14px 0 4px; }
+.guide p { font-size: 18px !important; margin: 8px 0 !important; }
 /* Lớp phủ thông báo */
 .ov { position: fixed; inset: 0; background: rgba(60, 40, 20, .45); display: none; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
 .ov.on { display: flex; }
@@ -301,6 +325,7 @@ h2 { font-size: clamp(22px, 4.5vw, 30px); margin: 10px 0; }
   <button class="ico corner" id="toParent" title="Dành cho bố mẹ">⚙️</button>
   <h1>🌈 Bé Vui Học</h1>
   <p class="sub">Mỗi ngày 10–15 phút chơi mà học</p>
+  <div style="text-align:center;margin:-6px 0 14px"><button class="btn small inst hidden">📲 Cài vào máy</button></div>
   <div class="kids" id="kids"></div>
 </div></section>
 
@@ -318,6 +343,7 @@ h2 { font-size: clamp(22px, 4.5vw, 30px); margin: 10px 0; }
   <div class="top">
     <button class="me" id="hmSwitch"><span class="av" id="hmAv"></span><span class="nm" id="hmName"></span></button>
     <span class="pill" id="hmStars"></span><span class="pill" id="hmStreak"></span>
+    <button class="ico inst hidden" title="Cài vào máy">📲</button>
     <button class="ico" id="hmMusic" title="Nhạc nền">🎵</button>
   </div>
   <div class="card mission">
@@ -357,6 +383,19 @@ h2 { font-size: clamp(22px, 4.5vw, 30px); margin: 10px 0; }
   <div id="paBox"></div>
 </div></section>
 
+<section class="scr" id="corner"><div class="wrap">
+  <div class="top"><button class="ico" data-go="home">🏠</button><h2 style="margin:0">🎮 Góc thử thách</h2></div>
+  <p class="sub">Trò chơi tính giờ, đề mới mỗi lượt. Phá kỷ lục để nhận sao!</p>
+  <div class="subs" id="arList"></div>
+</div></section>
+
+<section class="scr" id="arena">
+  <div class="pbar wrap"><button class="ico" id="arExit">✖️</button><div class="artime"><i id="arTime"></i></div><span class="pill" id="arScore"></span><span class="pill combo" id="arCombo"></span></div>
+  <div class="argoal hidden" id="arGoal"></div>
+  <div class="stage" id="arStage"></div>
+  <span class="hidden" id="arTitle"></span>
+</section>
+
 <div class="ov" id="ov"><div class="card box" id="ovBox"></div></div>
 
 <script src="nhac.js"></script>
@@ -364,6 +403,7 @@ h2 { font-size: clamp(22px, 4.5vw, 30px); margin: 10px 0; }
 <script src="bai-lop1.js"></script>
 <script src="bai-lop2.js"></script>
 <script src="tri-tue.js"></script>
+<script src="thu-thach.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

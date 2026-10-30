@@ -1,6 +1,6 @@
 'use strict';
 // Bé Vui Học – phần điều khiển: hồ sơ bé, nhiệm vụ mỗi ngày, các trò chơi, khu vườn, khu phụ huynh.
-const APP_VER = 3;
+const APP_VER = 4;
 const $ = id => document.getElementById(id);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
 const pad2 = n => String(n).padStart(2, '0');
@@ -29,7 +29,8 @@ for (const st in LESSONS) for (const sub in LESSONS[st]) for (const L of LESSONS
 const subjOf = id => SUBJECTS.find(s => s.id === id);
 const lessonsOf = (k, sub) => (LESSONS[k.stage] || LESSONS[1])[sub] || [];
 const unlocked = (k, L) => L.idx === 0 || !!k.done[lessonsOf(k, L.sub)[L.idx - 1].id];
-const totalStars = k => Object.values(k.done).reduce((a, b) => a + b, 0) + Object.values(k.tt || {}).reduce((a, z) => a + z.s, 0);
+const totalStars = k => Object.values(k.done).reduce((a, b) => a + b, 0) + Object.values(k.tt || {}).reduce((a, z) => a + z.s, 0)
+  + Object.values(k.ar || {}).reduce((a, z) => a + z.s, 0);
 // Đảo Trí Tuệ: cấp độ (lv 1–3), số lượt đã chơi (n), số sao kiếm được (s) của từng khu
 const zoneOf = id => ZONES.find(Z => Z.id === id);
 const ttOf = (k, id) => (k.tt || (k.tt = {}))[id] || (k.tt[id] = { lv: 1, n: 0, s: 0 });
@@ -199,6 +200,9 @@ function goHome(greet) {
   const ttoff = k.off.includes('tt');
   const tb = el('button', 'card subj' + (ttoff ? ' off' : ''), '<div class="e">🏝️</div><div class="n">Đảo Trí Tuệ</div><div class="p">Rèn tư duy</div>');
   tb.style.setProperty('--c', '#2ec4b6'); tb.onclick = () => (ttoff ? shake(tb) : goIsland()); sb.appendChild(tb);
+  const best = Math.max(0, ...ARCADE.map(G => arOf(k, G.id).best));
+  const ab = el('button', 'card subj', `<div class="e">🎮</div><div class="n">Góc thử thách</div><div class="p">${best ? '🏆 Kỷ lục ' + best : 'Đua điểm tính giờ'}</div>`);
+  ab.style.setProperty('--c', '#ff6b6b'); ab.onclick = goCorner; sb.appendChild(ab);
   const g = el('button', 'card subj', `<div class="e">${petOf(totalStars(k)).e}</div><div class="n">Khu vườn</div><div class="p">Bạn nhỏ của bé</div>`);
   g.style.setProperty('--c', '#ffcf4a'); g.onclick = goGarden; sb.appendChild(g);
   show('home');
@@ -266,6 +270,126 @@ function startZone(zid, mi) {
   P = { zone: zid, qs: Z.make(ttOf(kid(), zid).lv), i: 0, mist: 0, mi, ok: [] };
   show('play'); renderQ(true); say([Z.say].concat(P.q.say));
 }
+
+// ───── Góc thử thách: 3 trò tính giờ, tính điểm và kỷ lục ─────
+const arOf = (k, id) => (k.ar || (k.ar = {}))[id] || (k.ar[id] = { best: 0, n: 0, s: 0, day: '', ds: 0 });
+function goCorner() {
+  const k = kid(), box = $('arList'); box.innerHTML = '';
+  ARCADE.forEach(G => {
+    const a = arOf(k, G.id);
+    const b = el('button', 'card subj', `<div class="e">${G.icon}</div><div class="n">${G.name}</div><div class="p">${G.desc}</div><div class="p">🏆 Kỷ lục: ${a.best}</div>`);
+    b.style.setProperty('--c', G.color); b.onclick = () => startArcade(G.id);
+    box.appendChild(b);
+  });
+  show('corner'); say(ARPH.corner);
+}
+let AR = null;
+function startArcade(id) {
+  if (!timeOk(() => startArcade(id))) return;
+  const G = ARCADE.find(g => g.id === id), k = kid();
+  AR = { G, score: 0, combo: 0, left: G.secs, tok: {}, balloons: [] };
+  $('arTitle').textContent = G.icon + ' ' + G.name;
+  show('arena'); drawArHud();
+  const st = $('arStage'); st.innerHTML = '';
+  const me = AR;
+  // Đồng hồ đếm ngược
+  me.timer = setInterval(() => {
+    if (AR !== me || document.visibilityState !== 'visible') return;
+    me.left--; drawArHud();
+    if (me.left <= 0) endArcade();
+  }, 1000);
+  if (id === 'pop') { const R = arPopRound(k.stage); me.round = R; $('arGoal').textContent = '🎯 ' + R.goal; $('arGoal').classList.remove('hidden'); popLoop(me); }
+  else { $('arGoal').classList.add('hidden'); if (id === 'vocab') me.pool = shuffle(arVocabPool(k.stage)); nextAr(); }
+  say(ARPH[id]);
+}
+function drawArHud() {
+  $('arScore').textContent = '⭐ ' + AR.score;
+  $('arCombo').textContent = AR.combo >= 3 ? '🔥 ' + AR.combo : '';
+  $('arTime').style.width = Math.max(0, AR.left / AR.G.secs * 100) + '%';
+  $('arTime').classList.toggle('low', AR.left <= 10);
+}
+function arHit(ok, b) {
+  if (ok) {
+    AR.combo++; AR.score += AR.combo >= 5 ? 2 : 1; beep(true);
+    if (AR.combo === 5) say(ARPH.combo);
+  } else { AR.combo = 0; beep(false); if (b) shake(b); }
+  drawArHud();
+}
+// Tính nhẩm nhanh + Từ vựng nhanh: 4 nút đáp án, trả lời xong sang câu mới ngay
+function nextAr() {
+  const me = AR, st = $('arStage'), k = kid();
+  if (!me) return;
+  st.innerHTML = '';
+  let ans, opts, kind = 'num';
+  if (me.G.id === 'speed') {
+    const c = arCalc(k.stage); ans = String(c.a); opts = arOpts(c.a).map(String);
+    st.appendChild(el('div', 'card eq', esc(c.t) + ' = ?'));
+  } else {
+    if (!me.pool.length) me.pool = shuffle(arVocabPool(k.stage));
+    const v = me.pool.pop(); ans = v.o[0]; opts = shuffle(v.o); kind = '';
+    const b = el('button', 'ear', '🔊'); b.onclick = () => say(v.w); st.appendChild(b);
+    setTimeout(() => AR === me && say(v.w), me.score || me.combo ? 150 : 2600);
+  }
+  const box = el('div', 'opts');
+  opts.forEach(o => {
+    const b = el('button', 'card opt ' + (kind || itemKind(o)), itemHtml(o));
+    b.onclick = () => {
+      if (AR !== me || me.wait) return;
+      const ok = o === ans; arHit(ok, b);
+      if (ok) { b.classList.add('right'); me.wait = true; setTimeout(() => { me.wait = false; nextAr(); }, 250); }
+      else { me.wait = true; [...box.children].find(x => x.dataset.a === '1').classList.add('glow'); setTimeout(() => { me.wait = false; nextAr(); }, 900); }
+    };
+    b.dataset.a = o === ans ? '1' : '';
+    box.appendChild(b);
+  });
+  st.appendChild(box);
+}
+// Bắn bóng bay: bóng bay từ dưới lên, chạm bóng đúng thì nổ
+function popLoop(me) {
+  const st = $('arStage'); st.innerHTML = ''; st.classList.add('sky');
+  const COLORS = ['#ff6b6b', '#4fb6ff', '#7ccf5a', '#ffc531', '#b58cff', '#ff8a5c', '#ff7bc0'];
+  const spawn = () => {
+    if (AR !== me) return;
+    const B = me.round.make(), b = el('button', 'balloon', `<span>${esc(B.t)}</span>`);
+    const dur = (kid().stage <= 2 ? 8 : 7) - Math.min(2, me.score / 10);
+    // Chia khung thành các làn rộng bằng quả bóng, quả mới không ra cùng làn với 2 quả trước để khỏi đè nhau
+    const lanes = Math.max(2, Math.floor(st.clientWidth / 112));
+    let ln; do ln = ri(0, lanes - 1); while (lanes > 2 && (me.lanes || []).includes(ln));
+    me.lanes = [ln].concat(me.lanes || []).slice(0, 2);
+    b.style.cssText = `left:calc((100% - 108px) * ${(ln / (lanes - 1)).toFixed(3)});background:${rnd(COLORS)};animation-duration:${dur}s`;
+    b.onpointerdown = e => {
+      e.preventDefault();
+      if (AR !== me || b.classList.contains('boom')) return;
+      arHit(B.ok, b);
+      if (B.ok) { b.style.transform = getComputedStyle(b).transform; b.style.animation = 'none'; b.classList.add('boom'); setTimeout(() => b.remove(), 300); }
+    };
+    b.onanimationend = () => b.remove();
+    setTimeout(() => b.remove(), dur * 1000 + 300);   // phòng khi máy không báo hết hiệu ứng
+    st.appendChild(b);
+    me.spawnT = setTimeout(spawn, 950);
+  };
+  spawn();
+}
+function endArcade() {
+  const me = AR; if (!me) return;
+  clearInterval(me.timer); clearTimeout(me.spawnT); AR = null;
+  $('arStage').classList.remove('sky');
+  const k = kid(), a = arOf(k, me.G.id), rec = me.score > a.best;
+  const stars = me.G.stars.filter(x => me.score >= x).length;
+  // Mỗi trò chỉ cộng tối đa 6 sao/ngày vào khu vườn, để bé không chơi mãi một trò
+  if (a.day !== today()) { a.day = today(); a.ds = 0; }
+  const add = Math.min(stars, 6 - a.ds); a.ds += add; a.s += add;
+  a.n++; if (rec) a.best = me.score;
+  touch(k);
+  $('arStage').innerHTML = '';
+  overlay(`<div class="stars">${[1, 2, 3].map(i => `<span class="${i <= stars ? '' : 'no'}">⭐</span>`).join('')}</div>
+    <h2>${me.G.icon} ${me.G.name}</h2><p>Bé được <b>${me.score}</b> điểm${rec ? ' — 🏆 Kỷ lục mới!' : ` · Kỷ lục: ${a.best}`}</p>`, [
+    { t: '🔁 Chơi lại', cls: 'green', fn: () => startArcade(me.G.id) },
+    { t: '🎮 Trò khác', cls: 'ghost small', fn: goCorner },
+  ]);
+  say([ARPH.end, rec ? ARPH.record : ARPH.good]);
+}
+$('arExit').onclick = () => { if (AR) { clearInterval(AR.timer); clearTimeout(AR.spawnT); AR = null; } $('arStage').classList.remove('sky'); hush(); goCorner(); };
 
 // ───── Màn chơi ─────
 let P = null;
@@ -752,7 +876,7 @@ $('paBack').onclick = () => (paFrom === 'home' && kid() ? goHome() : goWho());
 function goParent() {
   paFrom = cur === 'home' ? 'home' : 'who';
   if (!DB.kids.some(k => k.id === paKid)) paKid = DB.cur && kid() ? DB.cur : (DB.kids[0] || {}).id;
-  renderParent(); show('parent');
+  renderParent(); show('parent'); askVoiceCount();
 }
 function renderParent() {
   const box = $('paBox'); box.innerHTML = '';
@@ -792,6 +916,10 @@ function renderParent() {
         : '<span style="color:var(--soft)">Sắp mở</span>')));
     });
     box.appendChild(s5);
+    // Góc thử thách: kỷ lục từng trò
+    const s6 = el('div', 'card psec', '<h2>🎮 Góc thử thách</h2>');
+    ARCADE.forEach(G => { const a = arOf(k, G.id); s6.appendChild(el('div', 'row', `<span class="grow">${G.icon} ${G.name}</span><span>🏆 ${a.best} điểm · ${a.n} lượt</span>`)); });
+    box.appendChild(s6);
     // Cài đặt riêng của bé
     const s3 = el('div', 'card psec', `<h2>🧒 Cài đặt cho ${esc(k.name)}</h2><div class="row"><b>Chặng học</b></div>`);
     const chips = el('div', 'chips'); s3.appendChild(chips);
@@ -829,13 +957,17 @@ function renderParent() {
   seg('Thời gian học mỗi ngày', [[10, '10 phút'], [15, '15 phút'], [20, '20 phút']], DB.set.limit, v => DB.set.limit = v);
   seg('Giọng đọc', [[false, 'Bình thường'], [true, 'Chậm']], DB.set.slow, v => DB.set.slow = v);
   seg('Nhạc nền', [[true, 'Bật'], [false, 'Tắt']], DB.set.music, v => { if (v !== DB.set.music) toggleMusic(); });
+  const ins = el('div', 'row', `<span class="grow">📲 ${isStandalone ? 'Đang chạy như ứng dụng đã cài' : 'Cài ứng dụng vào máy'}</span>`);
+  if (!isStandalone) { const b = el('button', 'btn small', 'Cài vào máy'); b.onclick = () => installBtns()[0].click(); ins.appendChild(b); }
+  s4.appendChild(ins);
+  if (voiceCount) s4.appendChild(el('div', 'row', `<span class="grow">🔊 Giọng đọc đã lưu để dùng không cần mạng</span><b>${voiceCount.voices}/${voiceCount.total}</b>`));
   s4.appendChild(el('p', 'sub', `Tiến độ đang lưu trên máy này. Bản sau sẽ có đăng nhập để học tiếp trên máy khác.<br>Phiên bản ${APP_VER}`));
   box.appendChild(s4);
 }
 
 // ───── Đếm thời gian học (chỉ khi đang chơi và màn hình đang mở) ─────
 setInterval(() => {
-  if (cur !== 'play' || document.visibilityState !== 'visible') return;
+  if ((cur !== 'play' && cur !== 'arena') || document.visibilityState !== 'visible') return;
   const k = kid(); if (!k) return;
   const t = today(); k.days[t] = (k.days[t] || 0) + 1;
   if (k.days[t] % 10 === 0) touch(k);
@@ -843,10 +975,54 @@ setInterval(() => {
 addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { save(); if (window.NhacNen && musicOn) { NhacNen.stop(); musicOn = false; } } });
 
 // ───── Chạy không cần mạng + tự cập nhật bản mới ─────
+let voiceCount = null;
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   const had = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').catch(() => {});
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (had && cur !== 'play') location.reload(); });
+  // Nhờ phần chạy nền tải dần giọng đọc để lần sau không cần mạng
+  navigator.serviceWorker.ready.then(r => setTimeout(() => r.active && r.active.postMessage('voices'), 3000));
+  navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.total) { voiceCount = e.data; if (cur === 'parent') renderParent(); } });
+}
+function askVoiceCount() { const c = navigator.serviceWorker && navigator.serviceWorker.controller; if (c) c.postMessage('count'); }
+
+// ───── Nút "Cài vào máy": Chrome Android hiện hộp cài ngay; trình duyệt khác thì hiện hướng dẫn phù hợp ─────
+const UA = navigator.userAgent;
+const isStandalone = matchMedia('(display-mode: fullscreen)').matches || matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+const isIOS = /iPad|iPhone|iPod/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isAndroid = /Android/i.test(UA);
+const inApp = /Zalo|FBAN|FBAV|FB_IAB|Instagram|Line\/|Messenger|TikTok|wv\)/i.test(UA);
+const isSamsung = /SamsungBrowser/i.test(UA);
+let installEvt = null;
+const installBtns = () => document.querySelectorAll('.inst');
+function showInstall(on) { installBtns().forEach(b => b.classList.toggle('hidden', !on)); }
+showInstall(!isStandalone && location.protocol.startsWith('http'));
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; if (!isStandalone) showInstall(true); });
+addEventListener('appinstalled', () => { installEvt = null; installGuide(true); });
+installBtns().forEach(b => b.onclick = async () => {
+  if (installEvt) {
+    installEvt.prompt();
+    const r = await installEvt.userChoice.catch(() => null);
+    installEvt = null;
+    if (r && r.outcome === 'accepted') return;
+  }
+  installGuide(false);
+});
+const MISSING_ICON = `<h3>🔎 Máy báo "đã cài" mà không thấy biểu tượng?</h3><ol>
+  <li>Vuốt mở <b>danh sách tất cả ứng dụng</b>, tìm <b>"Bé Vui Học"</b> (biểu tượng ngôi sao vàng), bấm giữ rồi kéo ra màn hình chính.</li>
+  <li>Máy <b>Xiaomi, Oppo, Vivo, Realme</b> hay chặn tạo biểu tượng: vào <b>Cài đặt → Ứng dụng → Chrome → Quyền</b>, bật <b>"Lối tắt trên màn hình chính"</b>, rồi cài lại.</li>
+  <li>Mở trang bằng Chrome, bấm <b>⋮</b>: nếu thấy dòng <b>"Mở ứng dụng"</b> là đã cài rồi.</li></ol>`;
+function installGuide(justInstalled) {
+  const url = location.href.split('#')[0];
+  let html;
+  if (justInstalled) html = `<p>🎉 Đã cài xong! Biểu tượng ngôi sao vàng có trên màn hình chính hoặc trong danh sách ứng dụng.</p>${isAndroid ? MISSING_ICON : ''}`;
+  else if (inApp) html = `<p>Bạn đang mở trong <b>Zalo/Facebook</b>. Trình duyệt bên trong các ứng dụng này <b>không cài được</b>, hãy mở bằng ${isIOS ? 'Safari' : 'Chrome'}.</p>
+    ${isAndroid ? `<p><a class="btn" style="text-decoration:none" href="intent://${url.replace(/^https?:\/\//, '')}#Intent;scheme=https;package=com.android.chrome;end">Mở bằng Chrome</a></p>` : ''}
+    <ol><li>Bấm nút <b>⋯</b> hoặc <b>⋮</b> ở góc trên.</li><li>Chọn <b>"Mở bằng trình duyệt"</b> / <b>"Mở trong ${isIOS ? 'Safari' : 'Chrome'}"</b>.</li><li>Bấm lại nút <b>📲 Cài vào máy</b>.</li></ol>`;
+  else if (isIOS) html = `<ol><li>Mở trang bằng <b>Safari</b>.</li><li>Bấm nút <b>Chia sẻ</b> (ô vuông có mũi tên lên ⬆️).</li><li>Kéo xuống, chọn <b>"Thêm vào MH chính"</b>.</li><li>Bấm <b>Thêm</b>.</li></ol>`;
+  else if (isSamsung) html = `<ol><li>Bấm nút <b>☰</b> ở góc dưới bên phải.</li><li>Chọn <b>"Thêm trang vào" → "Màn hình chờ"</b>.</li><li>Bấm <b>Thêm</b>.</li></ol>${MISSING_ICON}`;
+  else html = `<ol><li>Mở trang bằng <b>Chrome</b>.</li><li>Bấm nút <b>⋮</b> ở góc trên bên phải.</li><li>Chọn <b>"Cài đặt ứng dụng"</b> hoặc <b>"Thêm vào màn hình chính"</b> → <b>Cài đặt</b>.</li></ol>${MISSING_ICON}`;
+  overlay(`<div class="e" style="font-size:56px">📲</div><h2>Cài Bé Vui Học vào máy</h2><div class="guide">${html}</div>`, [{ t: 'Đã hiểu', cls: 'green' }]);
 }
 
 if (kid()) goHome(); else goWho();

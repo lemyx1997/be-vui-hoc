@@ -2,10 +2,10 @@
 const fs = require('fs'), path = require('path'), zlib = require('zlib');
 const root = path.join(__dirname, '..');
 
-function draw(N) {
+function draw(N, k = 1) {
   const px = Buffer.alloc(N * N * 4), SS = 3;
   const star = [];
-  for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = (i % 2 ? .19 : .42) * N; star.push([N / 2 + r * Math.cos(a), N * .53 + r * Math.sin(a)]); }
+  for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = (i % 2 ? .19 : .42) * N * k; star.push([N / 2 + r * Math.cos(a), N * (.5 + .03 * k) + r * Math.sin(a)]); }
   const inPoly = (x, y, P) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) if ((P[i][1] > y) !== (P[j][1] > y) && x < (P[j][0] - P[i][0]) * (y - P[i][1]) / (P[j][1] - P[i][1]) + P[i][0]) c = !c; return c; };
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
     let r = 0, g = 0, b = 0;
@@ -13,7 +13,7 @@ function draw(N) {
       const X = x + (sx + .5) / SS, Y = y + (sy + .5) / SS;
       const d = Math.hypot(X - N / 2, Y - N / 2);
       let c = [255, 170, 60];                                   // nền cam
-      if (d < N * .44) c = [255, 248, 232];                     // vòng tròn kem
+      if (d < N * .44 * k) c = [255, 248, 232];                     // vòng tròn kem
       if (inPoly(X, Y, star)) c = [255, 206, 40];               // ngôi sao
       r += c[0]; g += c[1]; b += c[2];
     }
@@ -32,4 +32,6 @@ function png(N, px) {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ih), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
 }
 for (const n of [192, 512]) fs.writeFileSync(path.join(root, `icon-${n}.png`), draw(n));
+// Bản cho Android (máy cắt biểu tượng thành hình tròn/vuông bo góc): thu nhỏ hình vào vùng an toàn giữa
+fs.writeFileSync(path.join(root, 'icon-maskable.png'), draw(512, .78));
 console.log('Đã vẽ biểu tượng');
